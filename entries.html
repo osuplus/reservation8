@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+  <script src="reservations.js"></script>
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyCzD2S-S1yv5SyiFCs9OrNPZQzMb7VppWg",
+      authDomain: "reservation-7ecf1.firebaseapp.com",
+      databaseURL: "https://reservation-7ecf1-default-rtdb.firebaseio.com",
+      projectId: "reservation-7ecf1",
+      storageBucket: "reservation-7ecf1.firebasestorage.app",
+      messagingSenderId: "464925582995",
+      appId: "1:464925582995:web:1891936be6fabd876f0f66"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+    const auth = firebase.auth(); // Firebase Authを初期化
+
+    // 匿名サインインを実行し、成功したらデータベースの監視を開始
+    auth.signInAnonymously()
+      .then(() => {
+        console.log("匿名ユーザーがサインインしました (entries.html)。");
+        db.ref('reservations').on('value', renderEntries); // サインイン後にデータベース監視を開始
+      })
+      .catch((error) => {
+        console.error("匿名サインインエラー (entries.html):", error);
+        document.getElementById("entryList").innerHTML = "<p style='text-align:center;'>データベースにアクセスできません。エラーが発生しました。</p>";
+      });
+  </script>
+
+  <meta charset="UTF-8">
+  <title>予約者一覧</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f0f0f0;
+      margin: 0;
+      padding: 20px;
+    }
+
+    h2 {
+      text-align: center;
+      margin-bottom: 30px;
+    }
+
+    .card {
+      background-color: #fff;
+      padding: 20px;
+      border-radius: 10px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      max-width: 500px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .card p {
+      margin: 6px 0;
+    }
+
+    .user-name {
+      font-weight: bold;
+      color: #28a745;
+      margin-bottom: 5px; /* 各名前の下に少し余白 */
+    }
+
+    .time-slot-section {
+      margin-top: 20px;
+      padding-top: 10px;
+      border-top: 1px solid #eee;
+    }
+
+    .time-slot-section h4 {
+      margin-top: 0;
+      color: #333;
+      display: inline-block; /* 人数表示と並列にするため */
+      margin-right: 10px; /* 人数表示との間隔 */
+    }
+
+    .entry-count {
+        font-size: 0.9em;
+        color: #555;
+        display: inline-block;
+    }
+  </style>
+</head>
+<body>
+  <h2>予約者一覧</h2>
+  <div id="entryList"></div>
+
+  <script>
+    const entryList = document.getElementById("entryList");
+
+    function renderEntries(data) {
+      entryList.innerHTML = "";
+      const firebaseReservations = data.val();
+      let hasAnyEntry = false;
+
+      for (let id in firebaseReservations) {
+        const firebaseRes = firebaseReservations[id];
+        const entries = firebaseRes.entries || {};
+        
+        // 元のreservationsDataから店舗情報を取得
+        const reservationDetail = allReservations.find(r => r.id === parseInt(id));
+
+        if (reservationDetail) {
+          const allDayEntries = [];
+          const morningEntries = [];
+          const afternoonEntries = [];
+
+          // エントリーを時間帯で分類
+          for (const entryId in entries) {
+            const entry = entries[entryId];
+            if (entry.timeSlot === '全日') {
+              allDayEntries.push(entry.userName);
+            } else if (entry.timeSlot === '午前') {
+              morningEntries.push(entry.userName);
+            } else if (entry.timeSlot === '午後') {
+              afternoonEntries.push(entry.userName);
+            }
+          }
+
+          // エントリーがあれば表示
+          if (allDayEntries.length > 0 || morningEntries.length > 0 || afternoonEntries.length > 0) {
+            hasAnyEntry = true;
+
+            const card = document.createElement("div");
+            card.className = "card";
+
+            card.innerHTML = `
+              <p><strong>日付:</strong> ${reservationDetail.date}</p>
+              <p><strong>店舗名:</strong> ${reservationDetail.store}</p>
+              <p><strong>住所:</strong> ${reservationDetail.address}</p>
+            `;
+
+            // 全日セクション
+            if (reservationDetail.maxEntriesAllDay !== undefined) { // maxEntriesAllDayが定義されている場合
+              const allDaySection = document.createElement("div");
+              allDaySection.className = "time-slot-section";
+              allDaySection.innerHTML = `
+                <h4>全日</h4><span class="entry-count"> (${allDayEntries.length}/${reservationDetail.maxEntriesAllDay}人)</span>
+                <div>${allDayEntries.map(name => `<div class="user-name">${name}</div>`).join("")}</div>
+              `;
+              card.appendChild(allDaySection);
+            }
+
+            // 午前セクション
+            if (reservationDetail.maxEntriesMorning !== undefined) { // maxEntriesMorningが定義されている場合
+              const morningSection = document.createElement("div");
+              morningSection.className = "time-slot-section";
+              morningSection.innerHTML = `
+                <h4>午前</h4><span class="entry-count"> (${morningEntries.length}/${reservationDetail.maxEntriesMorning}人)</span>
+                <div>${morningEntries.map(name => `<div class="user-name">${name}</div>`).join("")}</div>
+              `;
+              card.appendChild(morningSection);
+            }
+
+            // 午後セクション
+            if (reservationDetail.maxEntriesAfternoon !== undefined) { // maxEntriesAfternoonが定義されている場合
+              const afternoonSection = document.createElement("div");
+              afternoonSection.className = "time-slot-section";
+              afternoonSection.innerHTML = `
+                <h4>午後</h4><span class="entry-count"> (${afternoonEntries.length}/${reservationDetail.maxEntriesAfternoon}人)</span>
+                <div>${afternoonEntries.map(name => `<div class="user-name">${name}</div>`).join("")}</div>
+              `;
+              card.appendChild(afternoonSection);
+            }
+            
+            entryList.appendChild(card);
+          }
+        }
+      }
+
+      if (!hasAnyEntry) {
+        entryList.innerHTML = "<p style='text-align:center;'>予約情報がありません。</p>";
+      }
+    }
+  </script>
+</body>
+</html>
