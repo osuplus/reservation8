@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>予約一覧</title>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+  <script src="reservations.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f0f0f0;
+      padding: 20px;
+    }
+
+    .menu-icon {
+      font-size: 30px;
+      cursor: pointer;
+      padding: 15px;
+      position: absolute;
+      top: 0;
+      left: 0;
+      z-index: 1000;
+    }
+
+    .sidebar {
+      height: 100%;
+      width: 0;
+      position: fixed;
+      z-index: 999;
+      top: 0;
+      left: 0;
+      background-color: #333;
+      overflow-x: hidden;
+      transition: 0.3s;
+      padding-top: 60px;
+    }
+
+    .sidebar a {
+      padding: 10px 20px;
+      text-decoration: none;
+      font-size: 18px;
+      color: #fff;
+      display: block;
+    }
+
+    .sidebar a:hover {
+      background-color: #575757;
+    }
+
+    .log-container {
+      max-width: 600px;
+      margin: auto;
+      background-color: #fff;
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+
+    .log-container h2 {
+      margin-top: 0;
+    }
+
+    .reservation-entry {
+      margin-bottom: 20px;
+    }
+
+    .reservation-entry hr {
+      border: none;
+      border-top: 1px solid #ccc;
+    }
+    .user-entry-details {
+      margin-left: 20px;
+      margin-top: 5px;
+      font-size: 0.95em;
+      color: #555;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="menu-icon" onclick="openSidebar()">☰</div>
+  <div id="sidebar" class="sidebar">
+    <a href="javascript:void(0)" onclick="closeSidebar()">✕ 閉じる</a>
+    <a href="index.html">予約</a>
+    <a href="attendance.html">勤怠登録</a>
+    <a href="work_history.html">勤務履歴</a>
+    
+
+  </div>
+
+  <div class="log-container">
+    <h2>予約一覧</h2>
+    <div id="logContent">
+      <p>予約情報を読み込み中です...</p>
+    </div>
+    <a href="index.html">戻る</a>
+  </div>
+
+  <script>
+    // Firebaseの設定をnew_index.htmlと合わせる
+    const firebaseConfig = {
+      apiKey: "AIzaSyCzD2S-S1yv5SyiFCs9OrNPZQzMb7VppWg",
+      authDomain: "reservation-7ecf1.firebaseapp.com",
+      databaseURL: "https://reservation-7ecf1-default-rtdb.firebaseio.com",
+      projectId: "reservation-7ecf1",
+      storageBucket: "reservation-7ecf1.firebasestorage.app",
+      messagingSenderId: "464925582995",
+      appId: "1:464925582995:web:1891936be6fabd876f0f66"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+    const auth = firebase.auth(); // Firebase Authを初期化
+
+    let userName = ""; // ユーザー名を保持するための変数
+
+    // 予約情報の定義 (new_index.html と同じものを使用)
+    
+
+    function openSidebar() {
+      document.getElementById("sidebar").style.width = "250px";
+    }
+
+    function closeSidebar() {
+      document.getElementById("sidebar").style.width = "0";
+    }
+
+    async function displayReservations() {
+      const log = document.getElementById("logContent");
+      let reservedEntriesHtml = "";
+      let hasReservation = false;
+
+      // localStorageからユーザー名を取得
+      userName = localStorage.getItem("userName"); 
+
+      if (!userName) {
+        log.innerHTML = "<p>ユーザー名が登録されていません。メインページに戻って名前を登録してください。</p>";
+        return;
+      }
+
+      for (const res of allReservations) {
+        // Firebaseから各予約のエントリーリストを取得
+        const snapshot = await firebase.database().ref('reservations/' + res.id + '/entries').once('value');
+        const entries = snapshot.val();
+        
+        let userEntriesForThisReservation = [];
+        if (entries) {
+            for (const key in entries) {
+                if (entries[key].userName === userName) {
+                    userEntriesForThisReservation.push(entries[key]);
+                }
+            }
+        }
+
+        if (userEntriesForThisReservation.length > 0) {
+          hasReservation = true;
+          reservedEntriesHtml += `
+            <div class="reservation-entry">
+              <p><strong>日付:</strong> ${res.date}</p>
+              <p><strong>店舗名:</strong> ${res.store}</p>
+              <p><strong>住所:</strong> ${res.address}</p>
+          `;
+
+          // ユーザーのエントリーを時間帯ごとに表示
+          userEntriesForThisReservation.forEach(entry => {
+              reservedEntriesHtml += `
+                <p class="user-entry-details"> - 時間帯: ${entry.timeSlot}</p>
+              `;
+          });
+
+          reservedEntriesHtml += `
+              <hr>
+            </div>
+          `;
+        }
+      }
+
+      if (!hasReservation) {
+        log.innerHTML = "<p>まだ予約はありません。</p>";
+      } else {
+        log.innerHTML = reservedEntriesHtml;
+      }
+    }
+
+     // ページロード時に予約情報を表示する代わりに、匿名認証後に表示
+    auth.signInAnonymously()
+      .then(() => {
+        console.log("匿名ユーザーがサインインしました (list.html)。");
+        displayReservations(); // ★ ここでdisplayReservations()を呼び出す
+      })
+      .catch((error) => {
+        console.error("匿名サインインエラー (list.html):", error);
+        document.getElementById("logContent").innerHTML = "<p>データベースにアクセスできません。エラーが発生しました。</p>";
+      });
+  </script>
+</body>
+</html>
