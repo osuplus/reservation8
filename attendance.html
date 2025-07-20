@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>勤怠登録</title>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+  <script src="reservations.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f0f0f0;
+      padding: 20px; /* 全体的な左右の余白を維持 */
+    }
+
+    .menu-icon {
+      font-size: 30px;
+      cursor: pointer;
+      padding: 15px;
+      position: absolute;
+      top: 0;
+      left: 0;
+      z-index: 1000;
+    }
+
+    .sidebar {
+      height: 100%;
+      width: 0;
+      position: fixed;
+      z-index: 999;
+      top: 0;
+      left: 0;
+      background-color: #333;
+      overflow-x: hidden;
+      transition: 0.3s;
+      padding-top: 60px;
+    }
+
+    .sidebar a {
+      padding: 10px 20px;
+      text-decoration: none;
+      font-size: 18px;
+      color: #fff;
+      display: block;
+    }
+
+    .sidebar a:hover {
+      background-color: #575757;
+    }
+
+    /* h2 (勤怠登録) の位置調整 */
+    h2 {
+      text-align: center;
+      margin-top: 20px; /* entries.htmlのh2に合わせる */
+      margin-bottom: 20px; /* entries.htmlのh2に合わせる */
+      padding-top: 40px; /* サイドバーのアイコンと重ならないように調整 */
+    }
+
+    .container {
+      max-width: 800px;
+      margin: 20px auto 40px; /* h2との間隔を調整し、中央寄せを維持 */
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      /* gapプロパティは#pastReservationsに移動 */
+    }
+
+    .card {
+      background-color: #fff;
+      padding: 20px;
+      border-radius: 10px;
+      width: 90%;
+      max-width: 550px; /* カードの横幅をentries.htmlに合わせる */
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    .card p {
+      margin: 8px 0;
+    }
+
+    .card label {
+      display: block;
+      margin-bottom: 3px; /* 行間を詰めるために調整 */
+      font-weight: bold;
+    }
+
+    /* 勤務時間入力欄の横並び調整 */
+    .time-inputs {
+        display: flex;
+        flex-wrap: wrap; /* 小さい画面で折り返す */
+        gap: 10px; /* 入力欄の間隔 */
+        margin-bottom: 8px; /* 行間を詰めるために調整 */
+        align-items: center; /* 中央揃え */
+    }
+
+    .time-inputs > div {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+    }
+
+    .time-inputs span {
+        font-weight: bold;
+    }
+
+    /* セレクトボックスの共通スタイル */
+    select {
+      padding: 8px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      box-sizing: border-box;
+      font-size: 1em;
+      margin-bottom: 0; /* 親のdivで間隔を制御するため0に設定 */
+    }
+
+    /* 交通費・休憩時間のセレクトボックスの幅調整 */
+    .rest-travel-input-group select {
+        width: auto; /* コンテンツに合わせて幅を自動調整 */
+    }
+
+    /* 単位表示の調整 */
+    .unit-span {
+        margin-left: 5px; /* セレクトボックスとの間に少し隙間 */
+        font-weight: normal; /* 太字を解除 */
+    }
+
+    /* 休憩時間・交通費の行のflex設定 */
+    .rest-travel-input-group {
+        display: flex;
+        align-items: center;
+        gap: 5px; /* セレクトボックスと単位の間の隙間 */
+        margin-bottom: 8px; /* 行間を詰めるために調整 */
+    }
+
+    .register-button {
+      background-color: #28a745;
+      color: white;
+      padding: 12px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      width: 100%;
+      font-size: 16px;
+      margin-top: 10px;
+    }
+    .register-button:hover {
+      opacity: 0.9;
+    }
+    .no-past-reservations {
+        text-align: center;
+        margin-top: 50px;
+        font-size: 1.1em;
+        color: #666;
+    }
+
+    /* カード間の隙間を制御する新しいスタイル */
+    #pastReservations {
+        display: flex;
+        flex-direction: column;
+        gap: 20px; /* ここでカード間の隙間を定義 */
+        width: 100%; /* containerの幅に合わせる */
+        align-items: center; /* カードを中央に寄せる */
+    }
+
+    .revision-requested-message {
+        color: #d8000c; /* 修正依頼のメッセージ色 */
+        font-weight: bold;
+        margin-top: 10px;
+        padding: 5px;
+        border: 1px solid #d8000c;
+        border-radius: 5px;
+        background-color: #ffcccc;
+        text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="menu-icon" onclick="openSidebar()">☰</div>
+  <div id="sidebar" class="sidebar">
+    <a href="javascript:void(0)" onclick="closeSidebar()">✕ 閉じる</a>
+    <a href="index.html">予約</a>
+    <a href="list.html">予約一覧</a>
+    <a href="work_history.html">勤務履歴</a>
+    
+  </div>
+
+  <h2>勤怠登録</h2>
+  <div class="container" id="attendanceContainer">
+    <div id="pastReservations">
+      <p style="text-align:center;">過去の予約情報を読み込み中です...</p>
+    </div>
+  </div>
+
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyCzD2S-S1yv5SyiFCs9OrNPZQzMb7VppWg",
+      authDomain: "reservation-7ecf1.firebaseapp.com",
+      databaseURL: "https://reservation-7ecf1-default-rtdb.firebaseio.com",
+      projectId: "reservation-7ecf1",
+      storageBucket: "reservation-7ecf1.firebasestorage.app",
+      messagingSenderId: "464925582995",
+      appId: "1:464925582995:web:1891936be6fabd876f0f66"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+    const auth = firebase.auth();
+
+    let userName = "";
+
+    // 予約情報の定義 (index.html および list.html と同じものを使用)
+    /*const allReservations = [
+      {
+        id: 1,
+        date: "2025年6月15日",
+        store: "サンプルカフェ渋谷店",
+        address: "東京都渋谷区○○1-2-3",
+        maxEntries: 2
+      },
+      {
+        id: 2,
+        date: "2025年6月15日",
+        store: "サンプルカフェ新宿店",
+        address: "東京都新宿区△△4-5-6",
+        maxEntries: 3
+      },
+      {
+        id: 3,
+        date: "2025年6月15日",
+        store: "サンプルカフェ練馬店",
+        address: "東京都練馬区△△4-5-6",
+        maxEntries: 1
+      },
+      {
+        id: 4,
+        date: "2025年6月15日",
+        store: "サンプルカフェ中野店",
+        address: "東京都中野区△△4-5-6",
+        maxEntries: 5
+      },
+      {
+        id: 5,
+        date: "2025年6月15日",
+        store: "サンプルカフェ東京店",
+        address: "東京都千代田区△△4-5-6",
+        maxEntries: 2
+      }
+    ];*/
+
+    function openSidebar() {
+      document.getElementById("sidebar").style.width = "250px";
+    }
+
+    function closeSidebar() {
+      document.getElementById("sidebar").style.width = "0";
+    }
+
+    // 時刻のオプションを生成するヘルパー関数
+    function generateTimeOptions(type) {
+        let options = '';
+        if (type === 'hour') {
+            for (let i = 8; i < 21; i++) { // 勤務時間に合わせて範囲を調整
+                const hour = String(i).padStart(2, '0');
+                options += `<option value="${hour}">${hour}</option>`;
+            }
+        } else if (type === 'minute') {
+            for (let i = 0; i < 60; i += 15) {
+                const minute = String(i).padStart(2, '0');
+                options += `<option value="${minute}">${minute}</option>`;
+            }
+        }
+        return options;
+    }
+
+    // 交通費のオプションを生成するヘルパー関数
+    function generateTravelCostOptions() {
+        let options = '';
+        for (let i = 500; i <= 1500; i += 100) { // 500円から1500円まで100円刻み (適切な上限に調整)
+            options += `<option value="${i}">${i}</option>`;
+        }
+        return options;
+    }
+
+    // 休憩時間のオプションを生成するヘルパー関数
+    function generateRestMinuteOptions() {
+        let options = '';
+        for (let i = 0; i <= 60; i += 15) { // 0分から60分まで15分刻み
+            options += `<option value="${i}">${i}</option>`;
+        }
+        return options;
+    }
+
+    // 日雇い所得税額表（ご提供いただいたデータに基づいて作成）
+    // 収入9300円からの税額リスト
+    const dailyIncomeTaxRates = [
+      3,6,10,13,17,20,24,27,31,34,38,41,45,49,53,56,60,63,67,70,74,77,81,84,88,91,95,99,103,106,110,113,117,120,124,127,131,134,138,141,146,149,153,156,160,164,168,172,176,180,184,188,192,197,201,205,209,213,217,221,225,229,233,237,241,246,250,254
+    ];
+    const dailyIncomeTaxStartAmount = 9300; // 税額計算の開始収入額（円）
+    const dailyIncomeTaxInterval = 100; // 税額の増分単位（円）
+
+    function calculateDailyIncomeTax(grossSalaryBeforeTax) {
+        // 交通費を含まない給与から日雇い所得税を計算
+        // まず、9300円未満の場合は税金は0円とする
+        if (grossSalaryBeforeTax < dailyIncomeTaxStartAmount) {
+            return 0;
+        }
+
+        // 税額リストのインデックスを計算
+        // 例: grossSalaryBeforeTax が 9300円の場合、index = (9300 - 9300) / 100 = 0
+        // 例: grossSalaryBeforeTax が 9400円の場合、index = (9400 - 9300) / 100 = 1
+        const index = Math.floor((grossSalaryBeforeTax - dailyIncomeTaxStartAmount) / dailyIncomeTaxInterval);
+
+        // インデックスがリストの範囲内にあるか確認
+        if (index >= 0 && index < dailyIncomeTaxRates.length) {
+            return dailyIncomeTaxRates[index];
+        } else if (index >= dailyIncomeTaxRates.length) {
+            // リストの範囲を超える収入の場合、リストの最後の税額を適用するか、
+            // それ以上の収入に対する税額のロジックを追加する必要があります。
+            // ここでは簡易的にリストの最後の税額を適用します。
+            return dailyIncomeTaxRates[dailyIncomeTaxRates.length - 1];
+        }
+        
+        return 0; // その他のケース（通常は発生しないはず）
+    }
+
+    async function loadPastReservations() {
+      const pastReservationsDiv = document.getElementById("pastReservations");
+      pastReservationsDiv.innerHTML = "";
+      let hasPastReservationToRegister = false; // 登録が必要な過去の予約があるか
+
+      userName = localStorage.getItem("userName");
+      if (!userName) {
+        pastReservationsDiv.innerHTML = "<p class='no-past-reservations'>ユーザー名が登録されていません。メインページに戻って名前を登録してください。</p>";
+        return;
+      }
+
+      const today = new Date();
+      today.setHours(0, 0, 0, 0); // 今日の日付の0時0分0秒に設定
+
+      for (const res of allReservations) {
+        // 予約日をDateオブジェクトに変換
+        const reservationDateParts = res.date.match(/(\d+)年(\d+)月(\d+)日/);
+        const year = parseInt(reservationDateParts[1]);
+        const month = parseInt(reservationDateParts[2]) - 1; // 月は0から始まる
+        const day = parseInt(reservationDateParts[3]);
+        const resDate = new Date(year, month, day);
+
+        // 当日以前の予約のみを対象とする
+        if (resDate <= today) {
+          const snapshot = await firebase.database().ref('reservations/' + res.id + '/entries').once('value');
+          const entries = snapshot.val();
+
+          let userEntriesForThisReservation = [];
+          if (entries) {
+            for (const key in entries) {
+              if (entries[key].userName === userName) {
+                userEntriesForThisReservation.push({ entryId: key, ...entries[key] }); // entryIdも保持
+              }
+            }
+          }
+
+          if (userEntriesForThisReservation.length > 0) {
+            const firstEntry = userEntriesForThisReservation[0];
+
+            // 勤怠情報が未登録の場合（calculatedSalaryが存在しない、またはnull）
+            // または、修正依頼があった場合（revisionRequestedがtrue）に表示
+            if (firstEntry.calculatedSalary === undefined || firstEntry.calculatedSalary === null || firstEntry.revisionRequested === true) {
+              hasPastReservationToRegister = true;
+
+              const card = document.createElement("div");
+              card.className = "card";
+
+              // 勤務時間の初期値を取得 (またはデフォルト値)
+              const defaultStartTime = firstEntry.startTime || '09:00';
+              const defaultEndTime = firstEntry.endTime || '18:00';
+              const defaultStartHour = defaultStartTime.split(':')[0];
+              const defaultStartMinute = defaultStartTime.split(':')[1];
+              const defaultEndHour = defaultEndTime.split(':')[0];
+              const defaultEndMinute = defaultEndTime.split(':')[1];
+              
+              // 交通費の初期値を取得 (またはデフォルト値)
+              const defaultTravelCost = firstEntry.travelCost || 500;
+              // 休憩時間の初期値を取得 (またはデフォルト値)
+              const defaultRestTime = firstEntry.restTime || 60; // デフォルトは60分に設定
+
+              let revisionMessage = '';
+              if (firstEntry.revisionRequested === true && firstEntry.revisionReason) {
+                revisionMessage = `<p class="revision-requested-message">修正依頼: ${firstEntry.revisionReason}</p>`;
+              }
+
+              card.innerHTML = `
+                <p><strong>日付:</strong> ${res.date}</p>
+                <p><strong>店舗名:</strong> ${res.store}</p>
+                <p><strong>住所:</strong> ${res.address}</p>
+                <p><strong>予約時間帯:</strong> ${firstEntry.timeSlot}</p>
+                ${revisionMessage}
+                <hr>
+                <form onsubmit="submitAttendance(event, '${res.id}', '${firstEntry.entryId}')">
+                  <label>勤務時間:</label>
+                  <div class="time-inputs">
+                      <div class="time-select-group">
+                          <select id="startHour-${res.id}-${firstEntry.entryId}" required>
+                              ${generateTimeOptions('hour')}
+                          </select>
+                          <span>時</span>
+                          <select id="startMinute-${res.id}-${firstEntry.entryId}" required>
+                              ${generateTimeOptions('minute')}
+                          </select>
+                          <span>分</span>
+                      </div>
+                      <span>~</span>
+                      <div class="time-select-group">
+                          <select id="endHour-${res.id}-${firstEntry.entryId}" required>
+                              ${generateTimeOptions('hour')}
+                          </select>
+                          <span>時</span>
+                          <select id="endMinute-${res.id}-${firstEntry.entryId}" required>
+                              ${generateTimeOptions('minute')}
+                          </select>
+                          <span>分</span>
+                      </div>
+                  </div>
+
+                  <label for="restTimeSelect-${res.id}-${firstEntry.entryId}">休憩時間:</label>
+                  <div class="rest-travel-input-group">
+                      <select id="restTimeSelect-${res.id}-${firstEntry.entryId}" required>
+                          ${generateRestMinuteOptions()}
+                      </select>
+                      <span class="unit-span">分</span>
+                  </div>
+
+                  <label for="travelCostSelect-${res.id}-${firstEntry.entryId}">交通費:</label>
+                  <div class="rest-travel-input-group">
+                      <select id="travelCostSelect-${res.id}-${firstEntry.entryId}" required>
+                          ${generateTravelCostOptions()}
+                      </select>
+                      <span class="unit-span">円</span>
+                  </div>
+
+                  <button type="submit" class="register-button">登録</button>
+                </form>
+              `;
+              pastReservationsDiv.appendChild(card);
+
+              // 初期値を設定
+              document.getElementById(`startHour-${res.id}-${firstEntry.entryId}`).value = defaultStartHour;
+              document.getElementById(`startMinute-${res.id}-${firstEntry.entryId}`).value = defaultStartMinute;
+              document.getElementById(`endHour-${res.id}-${firstEntry.entryId}`).value = defaultEndHour;
+              document.getElementById(`endMinute-${res.id}-${firstEntry.entryId}`).value = defaultEndMinute;
+              document.getElementById(`restTimeSelect-${res.id}-${firstEntry.entryId}`).value = defaultRestTime; // 休憩時間の初期値
+              document.getElementById(`travelCostSelect-${res.id}-${firstEntry.entryId}`).value = defaultTravelCost;
+            }
+          }
+        }
+      }
+
+      if (!hasPastReservationToRegister) {
+        pastReservationsDiv.innerHTML = "<p class='no-past-reservations'>登録が必要な当日以前の予約はありません。</p>";
+      }
+    }
+
+    async function submitAttendance(event, reservationId, entryId) {
+      event.preventDefault(); // フォームのデフォルト送信を防ぐ
+
+      const startHourInput = document.getElementById(`startHour-${reservationId}-${entryId}`);
+      const startMinuteInput = document.getElementById(`startMinute-${reservationId}-${entryId}`);
+      const endHourInput = document.getElementById(`endHour-${reservationId}-${entryId}`);
+      const endMinuteInput = document.getElementById(`endMinute-${reservationId}-${entryId}`);
+      const restTimeSelect = document.getElementById(`restTimeSelect-${reservationId}-${entryId}`); // 休憩時間
+      const travelCostSelect = document.getElementById(`travelCostSelect-${reservationId}-${entryId}`);
+      const formElement = event.target; // フォーム要素を取得
+      const cardElement = formElement.closest('.card'); // 親のカード要素を取得
+
+      const startTimeStr = `${startHourInput.value}:${startMinuteInput.value}`;
+      const endTimeStr = `${endHourInput.value}:${endMinuteInput.value}`;
+      const restTimeMinutes = parseInt(restTimeSelect.value, 10); // 休憩時間を取得 (分)
+      const travelCost = parseInt(travelCostSelect.value, 10);
+
+      if (!startTimeStr || !endTimeStr) {
+          alert("勤務開始時間と終了時間を入力してください。");
+          return;
+      }
+
+      // 勤務時間計算
+      const today = new Date();
+      const startDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), parseInt(startHourInput.value), parseInt(startMinuteInput.value), 0);
+      let endDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), parseInt(endHourInput.value), parseInt(endMinuteInput.value), 0);
+
+      // 終了時間が開始時間より前の場合は、翌日とみなす
+      if (endDate < startDate) {
+          endDate.setDate(endDate.getDate() + 1);
+      }
+
+      let totalWorkMinutes = (endDate - startDate) / (1000 * 60); // ミリ秒を分に変換
+      let actualWorkMinutes = totalWorkMinutes - restTimeMinutes;
+
+      if (actualWorkMinutes < 0) {
+          actualWorkMinutes = 0; // 実働時間がマイナスになる場合は0とする
+      }
+
+      const hourlyRate = 1400; // 時給1400円
+      const overtimeMultiplier = 1.25; // 8時間超過時の倍率
+
+      let grossSalaryBeforeTax = 0; // 交通費を含まない、所得税控除前の給与
+      const eightHoursInMinutes = 8 * 60;
+
+      if (actualWorkMinutes <= eightHoursInMinutes) {
+          // 8時間以内
+          grossSalaryBeforeTax = (actualWorkMinutes / 60) * hourlyRate;
+      } else {
+          // 8時間超過
+          const regularWorkMinutes = eightHoursInMinutes;
+          const overtimeMinutes = actualWorkMinutes - eightHoursInMinutes;
+
+          const regularSalary = (regularWorkMinutes / 60) * hourlyRate;
+          const overtimeSalary = (overtimeMinutes / 60) * hourlyRate * overtimeMultiplier;
+
+          grossSalaryBeforeTax = regularSalary + overtimeSalary;
+      }
+
+      // 所得税を計算
+      // calculateDailyIncomeTax関数に渡す前に、交通費を含まない給与を整数に丸める（小数点以下切り捨て）
+      // 国税庁の税額表は円単位で適用されるため
+      const incomeTaxAmount = calculateDailyIncomeTax(Math.floor(grossSalaryBeforeTax));
+
+      // 所得税を控除した後の給与
+      let calculatedSalary = grossSalaryBeforeTax - incomeTaxAmount;
+
+      // 小数点以下を切り上げ
+      calculatedSalary = Math.ceil(calculatedSalary);
+
+      // 交通費を加算 (税金控除後に加算)
+      calculatedSalary += travelCost;
+
+      const attendanceRef = db.ref(`reservations/${reservationId}/entries/${entryId}`);
+      try {
+        await attendanceRef.update({
+          startTime: startTimeStr,
+          endTime: endTimeStr,
+          restTime: restTimeMinutes, // 休憩時間を保存
+          travelCost: travelCost,
+          calculatedSalary: calculatedSalary, // 計算された給料を保存
+          revisionRequested: false, // 登録し直したので修正依頼フラグをリセット
+          revisionReason: null, // 理由もリセット
+          revisionRequestedAt: null, // 依頼日時もリセット
+          updatedAt: new Date().toISOString() // 更新日時を追加
+        });
+        alert("勤怠情報が登録されました");
+
+        // 登録が完了したらカードを削除
+        if (cardElement) {
+            cardElement.remove();
+        }
+
+        // 全てのカードが削除されたかチェックし、メッセージを表示
+        const remainingCards = document.querySelectorAll('#pastReservations .card');
+        if (remainingCards.length === 0) {
+            document.getElementById("pastReservations").innerHTML = "<p class='no-past-reservations'>登録が必要な当日以前の予約はありません。</p>";
+        }
+
+      } catch (error) {
+        console.error("勤怠情報の登録中にエラーが発生しました:", error);
+        alert("勤怠情報の登録に失敗しました。");
+      }
+    }
+
+    // ページロード時に匿名認証を行い、その後勤怠情報を表示
+    auth.signInAnonymously()
+      .then(() => {
+        console.log("匿名ユーザーがサインインしました (attendance.html)。");
+        loadPastReservations();
+      })
+      .catch((error) => {
+        console.error("匿名サインインエラー (attendance.html):", error);
+        document.getElementById("pastReservations").innerHTML = "<p class='no-past-reservations'>データベースにアクセスできません。エラーが発生しました。</p>";
+      });
+  </script>
+</body>
+</html>
