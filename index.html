@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+  <script src="reservations.js"></script>
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyCzD2S-S1yv5SyiFCs9OrNPZQzMb7VppWg",
+      authDomain: "reservation-7ecf1.firebaseapp.com",
+      databaseURL: "https://reservation-7ecf1-default-rtdb.firebaseio.com",
+      projectId: "reservation-7ecf1",
+      storageBucket: "reservation-7ecf1.firebasestorage.app",
+      messagingSenderId: "464925582995",
+      appId: "1:464925582995:web:1891936be6fabd876f0f66"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+    const auth = firebase.auth(); // Firebase Authを初期化
+
+// データベースアクセス用の認証トークンを取得するために匿名でサインイン
+    auth.signInAnonymously()
+      .then(() => {
+        console.log("匿名ユーザーがサインインしました。");
+        // サインインが成功したら、ページロード時の処理を実行
+        const savedName = localStorage.getItem("userName");
+
+        if (savedName) {
+          userName = savedName;
+          document.getElementById("nameContainer").style.display = "none";
+          document.getElementById("reservationContainer").style.display = "flex";
+          // データベース操作を含む関数は認証後に呼び出す
+          renderReservations();
+          // updateReservationLog(); // 予約ログの表示を削除するためコメントアウト
+        }
+      })
+      .catch((error) => {
+        console.error("匿名サインインエラー:", error);
+        alert("データベースにアクセスできません。エラーが発生しました。");
+      });
+  </script>
+
+  <meta charset="UTF-8">
+  <title>予約システム</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      background-color: #f0f0f0;
+    }
+
+    .menu-icon {
+      font-size: 30px;
+      cursor: pointer;
+      padding: 15px;
+      position: absolute;
+      top: 0;
+      left: 0;
+      z-index: 1000;
+    }
+
+    .sidebar {
+      height: 100%;
+      width: 0;
+      position: fixed;
+      z-index: 999;
+      top: 0;
+      left: 0;
+      background-color: #333;
+      overflow-x: hidden;
+      transition: 0.3s;
+      padding-top: 60px;
+    }
+
+    .sidebar a {
+      padding: 10px 20px;
+      text-decoration: none;
+      font-size: 18px;
+      color: #fff;
+      display: block;
+    }
+
+    .sidebar a:hover {
+      background-color: #575757;
+    }
+
+    .container {
+      max-width: 800px;
+      margin: 80px auto 40px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .card {
+      background-color: #fff;
+      padding: 20px;
+      border-radius: 10px;
+      width: 90%;
+      max-width: 400px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    .card p {
+      margin: 8px 0;
+    }
+
+    .button {
+      display: block;
+      width: 100%;
+      padding: 12px;
+      font-size: 16px;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+
+    .register-button { background-color: #28a745; }
+    .entry-button    { background-color: #007BFF; }
+    .cancel-button   { background-color: #dc3545; }
+    /* エントリー済みボタンの新しいスタイル */
+    .reserved-button { background-color: #007BFF; cursor: not-allowed; } /* エントリー済みは青色でカーソル無効 */
+    .closed-button   { background-color: #6c757d; cursor: not-allowed; } /* 受付終了はグレー */
+    .button:hover    { opacity: 0.9; }
+    /* disabledまたは特定のクラスのボタンのhover効果を調整 */
+    .closed-button:hover,
+    .reserved-button:hover, /* エントリー済みボタンにもhover効果を無効化 */
+    .time-slot-button:disabled:hover,
+    .time-slot-button.closed-slot:hover {
+        opacity: 1; /* ホバー効果を無効化 */
+    }
+
+    /* 予約ログ関連のスタイルを削除またはコメントアウト */
+    /*
+    .reservation-log {
+      max-width: 500px;
+      margin: 0 auto 40px;
+      background-color: #fff;
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      display: none;
+    }
+
+    .reservation-log h3 {
+      margin-top: 0;
+    }
+    */
+
+    .card label[for="userName"] { /* "名前を入力してください"のラベル */
+      display: block; /* ラベルをブロック要素にして、入力ボックスを新しい行に */
+      margin-bottom: 10px; /* ラベルと入力ボックスの間隔 */
+    }
+
+    .card input[type="text"] {
+      width: calc(50% - 10px); /* 50%幅からパディングとマージンを考慮して調整 */
+      padding: 10px;
+      box-sizing: border-box; /* パディングをwidthに含める */
+      display: inline-block; /* 横並びにする */
+      vertical-align: top; /* 垂直方向のずれを防ぐ */
+      margin-bottom: 10px; /* 入力ボックスとボタンの間隔 */
+    }
+
+    .card #lastName {
+      margin-right: 10px; /* 姓と名の間隔 */
+    }
+
+    /* モーダル関連のスタイル */
+    .modal {
+      display: none; /* Hidden by default */
+      position: fixed; /* Stay in place */
+      z-index: 1; /* Sit on top */
+      left: 0;
+      top: 0;
+      width: 100%; /* Full width */
+      height: 100%; /* Full height */
+      overflow: auto; /* Enable scroll if needed */
+      background-color: rgba(0,0,0,0.4); /* Black w/ opacity */
+      justify-content: center;
+      align-items: center;
+    }
+
+    .modal-content {
+      background-color: #fefefe;
+      margin: auto;
+      padding: 20px;
+      border: 1px solid #888;
+      width: 80%;
+      max-width: 300px;
+      border-radius: 10px;
+      text-align: center;
+    }
+
+    .close-button {
+      color: #aaa;
+      float: right;
+      font-size: 28px;
+      font-weight: bold;
+    }
+
+    .close-button:hover,
+    .close-button:focus {
+      color: black;
+      text-decoration: none;
+      cursor: pointer;
+    }
+
+    .time-slot-button {
+      background-color: #007BFF;
+      color: white;
+      padding: 10px 15px;
+      margin: 5px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      width: calc(100% - 10px); /* Adjust width for margin */
+    }
+
+    .time-slot-button:hover {
+      opacity: 0.9;
+    }
+
+    /* 無効化された時間帯ボタンのスタイル */
+    .time-slot-button:disabled,
+    .time-slot-button.closed-slot { /* closed-slot クラスを新たに定義 */
+        background-color: #6c757d; /* グレーアウト */
+        cursor: not-allowed;
+        opacity: 1; /* ホバーで透明度が変わらないように */
+    }
+
+  </style>
+</head>
+<body>
+
+  <div class="menu-icon" onclick="openSidebar()">☰</div>
+  <div id="sidebar" class="sidebar">
+    <a href="javascript:void(0)" onclick="closeSidebar()">✕ 閉じる</a>
+    <a href="list.html">予約一覧</a>
+    <a href="attendance.html">勤怠登録</a>
+    <a href="work_history.html">勤務履歴</a>
+    <a href="entries.html">予約者一覧</a>
+    <a href="confirmation.html">勤怠確認</a>
+    <a href="approved_list.html">承認一覧</a>
+  </div>
+
+  <div class="container" id="nameContainer">
+    <div class="card">
+      <label for="userName">名前を入力してください：</label>
+      <input type="text" id="lastName" placeholder="姓">
+      <input type="text" id="firstName" placeholder="名">
+      <button class="button register-button" onclick="registerName()">登録</button>
+    </div>
+  </div>
+
+  <div class="container" id="reservationContainer" style="display: none;"></div>
+
+  <div id="timeSelectionModal" class="modal">
+    <div class="modal-content">
+      <span class="close-button" onclick="closeTimeSelectionModal()">&times;</span>
+      <h3>勤務時間を選択してください</h3>
+      <button id="allDayBtn" class="time-slot-button" onclick="selectTimeSlot('全日')">全日 (9~18時)</button>
+      <button id="morningBtn" class="time-slot-button" onclick="selectTimeSlot('午前')">午前 (9~13時)</button>
+      <button id="afternoonBtn" class="time-slot-button" onclick="selectTimeSlot('午後')">午後 (13~18時)</button>
+    </div>
+  </div>
+
+  <script>
+    let userName = "";
+    let currentReservationId = null; // 選択された予約のIDを保持
+
+    function openSidebar() {
+      document.getElementById("sidebar").style.width = "250px";
+    }
+
+    function closeSidebar() {
+      document.getElementById("sidebar").style.width = "0";
+    }
+
+    function registerName() {
+      const lastName = document.getElementById("lastName").value.trim();
+      const firstName = document.getElementById("firstName").value.trim();
+
+      if (!lastName || !firstName) {
+        alert("姓と名の両方を入力してください。");
+        return;
+      }
+      userName = lastName + " " + firstName;
+      localStorage.setItem("userName", userName);
+      alert(userName + " さんの名前を登録しました。");
+
+      document.getElementById("nameContainer").style.display = "none";
+      document.getElementById("reservationContainer").style.display = "flex";
+      renderReservations();
+    }
+
+    async function renderReservations() {
+      const container = document.getElementById("reservationContainer");
+      container.innerHTML = "";
+
+      for (const res of allReservations) { // ここは既に修正済みのはずですが念のため確認
+        const card = document.createElement("div");
+        card.className = "card";
+
+        const entryButton = document.createElement("button");
+        entryButton.className = "button entry-button";
+        entryButton.textContent = "エントリー";
+
+        const cancelButton = document.createElement("button");
+        cancelButton.className = "button cancel-button";
+        cancelButton.textContent = "キャンセル";
+        cancelButton.style.display = "none";
+
+        // Firebaseから現在のエントリー人数を取得
+        const snapshot = await firebase.database().ref('reservations/' + res.id + '/entries').once('value');
+        const entriesInFirebase = snapshot.val() || {};
+
+        // 各時間帯のエントリー数をカウント
+        let allDayCount = 0;
+        let morningCount = 0;
+        let afternoonCount = 0;
+        let isUserReservedInAnySlot = false; // ユーザーが何かしらの時間帯で予約済みか
+
+        for (const key in entriesInFirebase) {
+            const entry = entriesInFirebase[key];
+            if (entry.userName === userName) {
+                isUserReservedInAnySlot = true; // ユーザーが一つでも予約していればtrue
+            }
+            if (entry.timeSlot === '全日') {
+                allDayCount++;
+            } else if (entry.timeSlot === '午前') {
+                morningCount++;
+            } else if (entry.timeSlot === '午後') {
+                afternoonCount++;
+            }
+        }
+
+        // エントリーボタンの表示と有効/無効の制御
+        if (isUserReservedInAnySlot) {
+            entryButton.textContent = "エントリー済み";
+            entryButton.disabled = true;
+            entryButton.classList.remove('entry-button', 'closed-button');
+            entryButton.classList.add('reserved-button');
+            cancelButton.style.display = "block";
+        } else {
+            const hasAvailableSlot = (allDayCount < res.maxEntriesAllDay) ||
+                                     (morningCount < res.maxEntriesMorning) ||
+                                     (afternoonCount < res.maxEntriesAfternoon);
+
+            if (hasAvailableSlot) {
+                entryButton.textContent = `エントリー`;
+                entryButton.disabled = false;
+                entryButton.classList.remove('reserved-button', 'closed-button');
+                entryButton.classList.add('entry-button');
+            } else {
+                entryButton.textContent = "受付終了";
+                entryButton.disabled = true;
+                entryButton.classList.remove('reserved-button', 'entry-button');
+                entryButton.classList.add('closed-button');
+            }
+        }
+
+        entryButton.onclick = () => {
+            currentReservationId = res.id;
+            openTimeSelectionModal();
+        };
+
+        cancelButton.onclick = async () => {
+          const reservationRef = firebase.database().ref('reservations/' + res.id + '/entries');
+          await reservationRef.once('value', snapshot => {
+            snapshot.forEach(child => {
+              if (child.val().userName === userName) {
+                child.ref.remove();
+              }
+            });
+          });
+
+          alert(`${userName} さんの予約をキャンセルしました。`);
+          renderReservations();
+        };
+
+        card.innerHTML = `
+          <p><strong>日付:</strong> ${res.date}</p>
+          <p><strong>店舗名:</strong> ${res.store}</p>
+          <p><strong>住所:</strong> <a href="${res.mapUrl}" target="_blank">${res.address}</a></p>
+        `;
+        card.appendChild(entryButton);
+        card.appendChild(cancelButton);
+        container.appendChild(card);
+      }
+    }
+
+    async function openTimeSelectionModal() {
+      const modal = document.getElementById("timeSelectionModal");
+      const allDayBtn = document.getElementById("allDayBtn");
+      const morningBtn = document.getElementById("morningBtn");
+      const afternoonBtn = document.getElementById("afternoonBtn");
+
+      // ボタンの有効/無効状態をリセット
+      allDayBtn.disabled = false;
+      morningBtn.disabled = false;
+      afternoonBtn.disabled = false;
+      allDayBtn.classList.remove('closed-slot');
+      morningBtn.classList.remove('closed-slot');
+      afternoonBtn.classList.remove('closed-slot');
+
+      if (currentReservationId === null) {
+        console.error("エラー: 予約IDが見つかりません。");
+        return;
+      }
+
+      // 修正: reservations を allReservations に変更
+      const selectedReservation = allReservations.find(res => res.id === currentReservationId);
+      if (!selectedReservation) {
+        console.error("エラー: 選択された予約情報が見つかりません。");
+        return;
+      }
+
+      const reservationRef = firebase.database().ref('reservations/' + currentReservationId + '/entries');
+      const snapshot = await reservationRef.once('value');
+      const entriesInFirebase = snapshot.val() || {};
+
+      let allDayCount = 0;
+      let morningCount = 0;
+      let afternoonCount = 0;
+      let isUserBookedInAnySlot = false; // ユーザーが何かしらの時間帯で既に予約しているか
+
+      for (const key in entriesInFirebase) {
+          const entry = entriesInFirebase[key];
+          if (entry.userName === userName) {
+              isUserBookedInAnySlot = true;
+          }
+          if (entry.timeSlot === '全日') {
+              allDayCount++;
+          } else if (entry.timeSlot === '午前') {
+              morningCount++;
+          } else if (entry.timeSlot === '午後') {
+              afternoonCount++;
+          }
+      }
+
+      // ユーザーが既に他の時間帯で予約している場合、全てグレーアウト
+      if (isUserBookedInAnySlot) {
+        allDayBtn.disabled = true;
+        morningBtn.disabled = true;
+        afternoonBtn.disabled = true;
+        allDayBtn.classList.add('closed-slot');
+        morningBtn.classList.add('closed-slot');
+        afternoonBtn.classList.add('closed-slot');
+      } else {
+        // 各時間帯の空き状況に基づいてボタンを有効/無効化
+        if (selectedReservation.maxEntriesAllDay === 0 || allDayCount >= selectedReservation.maxEntriesAllDay) {
+            allDayBtn.disabled = true;
+            allDayBtn.classList.add('closed-slot');
+        }
+        if (selectedReservation.maxEntriesMorning === 0 || morningCount >= selectedReservation.maxEntriesMorning) {
+            morningBtn.disabled = true;
+            morningBtn.classList.add('closed-slot');
+        }
+        if (selectedReservation.maxEntriesAfternoon === 0 || afternoonCount >= selectedReservation.maxEntriesAfternoon) {
+            afternoonBtn.disabled = true;
+            afternoonBtn.classList.add('closed-slot');
+        }
+      }
+
+      modal.style.display = "flex";
+    }
+
+
+    function closeTimeSelectionModal() {
+      document.getElementById("timeSelectionModal").style.display = "none";
+      currentReservationId = null; // モーダルを閉じたらIDをリセット
+    }
+
+    async function selectTimeSlot(timeSlot) {
+      if (currentReservationId === null) {
+        alert("エラー: 予約IDが見つかりません。");
+        return;
+      }
+
+      const reservationRef = firebase.database().ref('reservations/' + currentReservationId + '/entries');
+      const snapshot = await reservationRef.once('value');
+      const entriesInFirebase = snapshot.val() || {};
+
+      const selectedReservation = allReservations.find(res => res.id === currentReservationId); // ここは既に修正済みのはずですが念のため確認
+
+      let currentCountForSlot = 0;
+      let maxEntriesForSlot = 0;
+
+      // 選択された時間帯の現在のエントリー数と最大人数を取得
+      for (const key in entriesInFirebase) {
+          const entry = entriesInFirebase[key];
+          if (entry.timeSlot === timeSlot) {
+              currentCountForSlot++;
+          }
+      }
+
+      if (timeSlot === '全日') {
+          maxEntriesForSlot = selectedReservation.maxEntriesAllDay;
+      } else if (timeSlot === '午前') {
+          maxEntriesForSlot = selectedReservation.maxEntriesMorning;
+      } else if (timeSlot === '午後') {
+          maxEntriesForSlot = selectedReservation.maxEntriesAfternoon;
+      }
+
+      // 時間帯ごとの空き状況をチェック (ボタンのdisabled属性で既に制御されているはずだが、念のため)
+      if (maxEntriesForSlot === 0) {
+          alert("この時間帯は現在予約できません。");
+          closeTimeSelectionModal();
+          return;
+      }
+      if (currentCountForSlot >= maxEntriesForSlot) {
+          alert("この時間帯は満員です。");
+          closeTimeSelectionModal();
+          return;
+      }
+
+      // 同じユーザーが既にその時間帯で予約していないかチェック
+      const isAlreadyBookedForSlot = entriesInFirebase ? Object.values(entriesInFirebase).some(entry => entry.userName === userName && entry.timeSlot === timeSlot) : false;
+      if (isAlreadyBookedForSlot) {
+        alert(`${userName} さんは既にこの時間帯でエントリーしています。`);
+        closeTimeSelectionModal();
+        return;
+      }
+
+      // ユーザーが別の時間帯で既に予約していないかチェック（二重予約防止）
+      const isUserBookedInAnySlot = entriesInFirebase ? Object.values(entriesInFirebase).some(entry => entry.userName === userName) : false;
+      if (isUserBookedInAnySlot) {
+          alert(`${userName} さんは既に別の時間帯でエントリーしています。既存の予約をキャンセルしてから、再度エントリーしてください。`);
+          closeTimeSelectionModal();
+          return;
+      }
+
+      await reservationRef.push({ userName: userName, timeSlot: timeSlot });
+      alert(`${userName} さんが ${selectedReservation.store} に ${timeSlot} でエントリーしました。`);
+      closeTimeSelectionModal();
+      renderReservations();
+    }
+</script>
+
+</body>
+</html>
