@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>勤務履歴</title>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+  <script src="reservations.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f0f0f0;
+      padding: 20px;
+    }
+
+    .menu-icon {
+      font-size: 30px;
+      cursor: pointer;
+      padding: 15px;
+      position: absolute;
+      top: 0;
+      left: 0;
+      z-index: 1000;
+    }
+
+    .sidebar {
+      height: 100%;
+      width: 0;
+      position: fixed;
+      z-index: 999;
+      top: 0;
+      left: 0;
+      background-color: #333;
+      overflow-x: hidden;
+      transition: 0.3s;
+      padding-top: 60px;
+    }
+
+    .sidebar a {
+      padding: 10px 20px;
+      text-decoration: none;
+      font-size: 18px;
+      color: #fff;
+      display: block;
+    }
+
+    .sidebar a:hover {
+      background-color: #575757;
+    }
+
+    h2 {
+      text-align: center;
+      margin-top: 20px;
+      margin-bottom: 20px;
+      padding-top: 40px;
+    }
+
+    .container {
+      max-width: 800px;
+      margin: 20px auto 40px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .card {
+      background-color: #fff;
+      padding: 20px;
+      border-radius: 10px;
+      width: 90%;
+      max-width: 550px; /* attendance.html と同じ幅 */
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      margin-bottom: 20px; /* カード間の下マージン */
+    }
+
+    .card p {
+      margin: 8px 0;
+    }
+
+    .salary-display {
+        margin-top: 10px;
+        font-size: 1.1em;
+        font-weight: bold;
+        color: #28a745; /* 勤怠登録後の色に合わせる */
+        text-align: center;
+        border-top: 1px solid #eee;
+        padding-top: 10px;
+    }
+
+    .no-work-history {
+        text-align: center;
+        margin-top: 50px;
+        font-size: 1.1em;
+        color: #666;
+    }
+
+    /* カード間の隙間を制御するスタイル */
+    #workHistoryList {
+        display: flex;
+        flex-direction: column;
+        gap: 20px; /* ここでカード間の隙間を定義 */
+        width: 100%; /* containerの幅に合わせる */
+        align-items: center; /* カードを中央に寄せる */
+    }
+
+    /* 修正ボタンのスタイル */
+    .edit-button, .save-button, .cancel-button {
+      background-color: #007bff;
+      color: white;
+      padding: 8px 12px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 0.9em;
+      margin-top: 5px;
+      margin-left: 10px;
+    }
+    .edit-button:hover, .save-button:hover, .cancel-button:hover {
+      opacity: 0.9;
+    }
+    .save-button {
+      background-color: #28a745;
+    }
+    .cancel-button {
+      background-color: #dc3545;
+    }
+
+    /* 編集モードの入力欄スタイル */
+    .time-inputs {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-bottom: 8px;
+        align-items: center;
+    }
+
+    .time-inputs > div {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+    }
+
+    .time-inputs span {
+        font-weight: bold;
+    }
+
+    select {
+      padding: 8px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      box-sizing: border-box;
+      font-size: 1em;
+      margin-bottom: 0;
+    }
+
+    .rest-travel-input-group {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        margin-bottom: 8px;
+    }
+
+    .unit-span {
+        margin-left: 5px;
+        font-weight: normal;
+    }
+
+    .edit-mode .display-mode, .display-mode .edit-mode {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="menu-icon" onclick="openSidebar()">☰</div>
+  <div id="sidebar" class="sidebar">
+    <a href="javascript:void(0)" onclick="closeSidebar()">✕ 閉じる</a>
+    <a href="index.html">予約</a>
+    <a href="list.html">予約一覧</a>
+    <a href="attendance.html">勤怠登録</a>
+    
+  </div>
+
+  <h2>勤務履歴</h2>
+  <div class="container">
+    <div id="workHistoryList">
+      <p style="text-align:center;">勤務履歴を読み込み中です...</p>
+    </div>
+  </div>
+
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyCzD2S-S1yv5SyiFCs9OrNPZQzMb7VppWg",
+      authDomain: "reservation-7ecf1.firebaseapp.com",
+      databaseURL: "https://reservation-7ecf1-default-rtdb.firebaseio.com",
+      projectId: "reservation-7ecf1",
+      storageBucket: "reservation-7ecf1.firebasestorage.app",
+      messagingSenderId: "464925582995",
+      appId: "1:464925582995:web:1891936be6fabd876f0f66"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+    const auth = firebase.auth();
+
+    let userName = "";
+
+    // 予約情報の定義 (attendance.html と同じものを使用)
+    /*const allReservations = [
+      {
+        id: 1,
+        date: "2025年6月15日",
+        store: "サンプルカフェ渋谷店",
+        address: "東京都渋谷区○○1-2-3",
+        maxEntries: 2
+      },
+      {
+        id: 2,
+        date: "2025年6月15日",
+        store: "サンプルカフェ新宿店",
+        address: "東京都新宿区△△4-5-6",
+        maxEntries: 3
+      },
+      {
+        id: 3,
+        date: "2025年6月15日",
+        store: "サンプルカフェ練馬店",
+        address: "東京都練馬区△△4-5-6",
+        maxEntries: 1
+      },
+      {
+        id: 4,
+        date: "2025年6月15日",
+        store: "サンプルカフェ中野店",
+        address: "東京都中野区△△4-5-6",
+        maxEntries: 5
+      },
+      {
+        id: 5,
+        date: "2025年6月15日",
+        store: "サンプルカフェ東京店",
+        address: "東京都千代田区△△4-5-6",
+        maxEntries: 2
+      }
+    ];*/
+
+    function openSidebar() {
+      document.getElementById("sidebar").style.width = "250px";
+    }
+
+    function closeSidebar() {
+      document.getElementById("sidebar").style.width = "0";
+    }
+
+    // 時刻のオプションを生成するヘルパー関数 (attendance.htmlからコピー)
+    function generateTimeOptions(type) {
+        let options = '';
+        if (type === 'hour') {
+            for (let i = 8; i < 21; i++) { // 勤務時間に合わせて範囲を調整
+                const hour = String(i).padStart(2, '0');
+                options += `<option value="${hour}">${hour}</option>`;
+            }
+        } else if (type === 'minute') {
+            for (let i = 0; i < 60; i += 15) {
+                const minute = String(i).padStart(2, '0');
+                options += `<option value="${minute}">${minute}</option>`;
+            }
+        }
+        return options;
+    }
+
+    // 交通費のオプションを生成するヘルパー関数 (attendance.htmlからコピー)
+    function generateTravelCostOptions() {
+        let options = '';
+        for (let i = 500; i <= 1500; i += 100) { // 500円から1500円まで100円刻み (適切な上限に調整)
+            options += `<option value="${i}">${i}</option>`;
+        }
+        return options;
+    }
+
+    // 休憩時間のオプションを生成するヘルパー関数 (attendance.htmlからコピー)
+    function generateRestMinuteOptions() {
+        let options = '';
+        for (let i = 0; i <= 60; i += 15) { // 0分から60分まで15分刻み
+            options += `<option value="${i}">${i}</option>`;
+        }
+        return options;
+    }
+
+    // 日雇い所得税額表（attendance.htmlからコピー）
+    const dailyIncomeTaxRates = [
+      3,6,10,13,17,20,24,27,31,34,38,41,45,49,53,56,60,63,67,70,74,77,81,84,88,91,95,99,103,106,110,113,117,120,124,127,131,134,138,141,146,149,153,156,160,164,168,172,176,180,184,188,192,197,201,205,209,213,217,221,225,229,233,237,241,246,250,254
+    ];
+    const dailyIncomeTaxStartAmount = 9300; // 税額計算の開始収入額（円）
+    const dailyIncomeTaxInterval = 100; // 税額の増分単位（円）
+
+    function calculateDailyIncomeTax(grossSalaryBeforeTax) {
+        if (grossSalaryBeforeTax < dailyIncomeTaxStartAmount) {
+            return 0;
+        }
+        const index = Math.floor((grossSalaryBeforeTax - dailyIncomeTaxStartAmount) / dailyIncomeTaxInterval);
+        if (index >= 0 && index < dailyIncomeTaxRates.length) {
+            return dailyIncomeTaxRates[index];
+        } else if (index >= dailyIncomeTaxRates.length) {
+            return dailyIncomeTaxRates[dailyIncomeTaxRates.length - 1];
+        }
+        return 0;
+    }
+
+    async function loadWorkHistory() {
+      const workHistoryListDiv = document.getElementById("workHistoryList");
+      workHistoryListDiv.innerHTML = "";
+      let hasWorkHistory = false;
+
+      userName = localStorage.getItem("userName"); // ユーザー名を取得
+
+      // allReservations を使用して予約詳細を取得
+      const reservationDetailsMap = {};
+      for (const res of allReservations) {
+        reservationDetailsMap[res.id] = res;
+      }
+
+      if (!userName) {
+        workHistoryListDiv.innerHTML = "<p class='no-work-history'>ユーザー名が登録されていません。メインページに戻って名前を登録してください。</p>";
+        return;
+      }
+
+      for (const res of allReservations) {
+        const snapshot = await firebase.database().ref('reservations/' + res.id + '/entries').once('value');
+        const entries = snapshot.val();
+
+        if (entries) {
+          for (const key in entries) {
+            const entry = entries[key];
+            // calculatedSalary が存在し、null でない場合のみ表示
+            if (entry.userName === userName && (entry.calculatedSalary !== undefined && entry.calculatedSalary !== null)) {
+              hasWorkHistory = true;
+
+              const card = document.createElement("div");
+              card.className = "card";
+              card.setAttribute('data-reservation-id', res.id);
+              card.setAttribute('data-entry-id', key);
+
+              // 勤務時間、休憩時間、交通費の表示モードと編集モードを切り替えるためのHTML
+              card.innerHTML = `
+                <p><strong>日付:</strong> ${res.date}</p>
+                <p><strong>店舗名:</strong> ${res.store}</p>
+                <div class="display-mode">
+                  <p id="display-work-time-${res.id}-${key}"><strong>勤務時間:</strong> ${entry.startTime} ~ ${entry.endTime}</p>
+                  <p id="display-rest-time-${res.id}-${key}"><strong>休憩時間:</strong> ${entry.restTime} 分</p>
+                  <p id="display-travel-cost-${res.id}-${key}"><strong>交通費:</strong> ${entry.travelCost} 円</p>
+                </div>
+                <div class="edit-mode" style="display:none;">
+                  <label>勤務時間:</label>
+                  <div class="time-inputs">
+                      <div class="time-select-group">
+                          <select id="edit-startHour-${res.id}-${key}" required>
+                              ${generateTimeOptions('hour')}
+                          </select>
+                          <span>時</span>
+                          <select id="edit-startMinute-${res.id}-${key}" required>
+                              ${generateTimeOptions('minute')}
+                          </select>
+                          <span>分</span>
+                      </div>
+                      <span>~</span>
+                      <div class="time-select-group">
+                          <select id="edit-endHour-${res.id}-${key}" required>
+                              ${generateTimeOptions('hour')}
+                          </select>
+                          <span>時</span>
+                          <select id="edit-endMinute-${res.id}-${key}" required>
+                              ${generateTimeOptions('minute')}
+                          </select>
+                          <span>分</span>
+                      </div>
+                  </div>
+
+                  <label for="edit-restTimeSelect-${res.id}-${key}">休憩時間:</label>
+                  <div class="rest-travel-input-group">
+                      <select id="edit-restTimeSelect-${res.id}-${key}" required>
+                          ${generateRestMinuteOptions()}
+                      </select>
+                      <span class="unit-span">分</span>
+                  </div>
+
+                  <label for="edit-travelCostSelect-${res.id}-${key}">交通費:</label>
+                  <div class="rest-travel-input-group">
+                      <select id="edit-travelCostSelect-${res.id}-${key}" required>
+                          ${generateTravelCostOptions()}
+                      </select>
+                      <span class="unit-span">円</span>
+                  </div>
+                </div>
+                <div class="salary-display">
+                  給料: <span id="calculated-salary-${res.id}-${key}">${entry.calculatedSalary.toLocaleString()}</span> 円
+                  <button class="edit-button" onclick="editWorkEntry(this, '${res.id}', '${key}')">修正</button>
+                  <button class="save-button" style="display:none;" onclick="saveWorkEntry(this, '${res.id}', '${key}')">保存</button>
+                  <button class="cancel-button" style="display:none;" onclick="cancelEdit(this, '${res.id}', '${key}')">キャンセル</button>
+                </div>
+              `;
+              workHistoryListDiv.appendChild(card);
+            }
+          }
+        }
+      }
+
+      if (!hasWorkHistory) {
+        workHistoryListDiv.innerHTML = "<p class='no-work-history'>登録された勤務履歴はありません。</p>";
+      }
+    }
+
+    function editWorkEntry(button, reservationId, entryId) {
+      const card = button.closest('.card');
+      card.querySelector('.display-mode').style.display = 'none';
+      card.querySelector('.edit-mode').style.display = 'block';
+      button.style.display = 'none'; // 修正ボタンを非表示
+      card.querySelector('.save-button').style.display = 'inline-block';
+      card.querySelector('.cancel-button').style.display = 'inline-block';
+
+      // 現在の値をフォームにセット
+      const currentStartTime = card.querySelector(`#display-work-time-${reservationId}-${entryId}`).innerText.split(' ')[1]; // "HH:MM"
+      const currentEndTime = card.querySelector(`#display-work-time-${reservationId}-${entryId}`).innerText.split(' ')[3]; // "HH:MM"
+      const currentRestTime = parseInt(card.querySelector(`#display-rest-time-${reservationId}-${entryId}`).innerText.match(/(\d+) 分/)[1]);
+      const currentTravelCost = parseInt(card.querySelector(`#display-travel-cost-${reservationId}-${entryId}`).innerText.match(/(\d+) 円/)[1]);
+
+      document.getElementById(`edit-startHour-${reservationId}-${entryId}`).value = currentStartTime.split(':')[0];
+      document.getElementById(`edit-startMinute-${reservationId}-${entryId}`).value = currentStartTime.split(':')[1];
+      document.getElementById(`edit-endHour-${reservationId}-${entryId}`).value = currentEndTime.split(':')[0];
+      document.getElementById(`edit-endMinute-${reservationId}-${entryId}`).value = currentEndTime.split(':')[1];
+      document.getElementById(`edit-restTimeSelect-${reservationId}-${entryId}`).value = currentRestTime;
+      document.getElementById(`edit-travelCostSelect-${reservationId}-${entryId}`).value = currentTravelCost;
+    }
+
+    async function saveWorkEntry(button, reservationId, entryId) {
+      const card = button.closest('.card');
+      const startHourInput = document.getElementById(`edit-startHour-${reservationId}-${entryId}`);
+      const startMinuteInput = document.getElementById(`edit-startMinute-${reservationId}-${entryId}`);
+      const endHourInput = document.getElementById(`edit-endHour-${reservationId}-${entryId}`);
+      const endMinuteInput = document.getElementById(`edit-endMinute-${reservationId}-${entryId}`);
+      const restTimeSelect = document.getElementById(`edit-restTimeSelect-${reservationId}-${entryId}`);
+      const travelCostSelect = document.getElementById(`edit-travelCostSelect-${reservationId}-${entryId}`);
+
+      const startTimeStr = `${startHourInput.value}:${startMinuteInput.value}`;
+      const endTimeStr = `${endHourInput.value}:${endMinuteInput.value}`;
+      const restTimeMinutes = parseInt(restTimeSelect.value, 10);
+      const travelCost = parseInt(travelCostSelect.value, 10);
+
+      if (!startTimeStr || !endTimeStr) {
+          alert("勤務開始時間と終了時間を入力してください。");
+          return;
+      }
+
+      // 勤務時間計算ロジック (attendance.htmlからコピー)
+      const today = new Date(); // 日付は現在のものを使用 (時間計算のため)
+      const startDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), parseInt(startHourInput.value), parseInt(startMinuteInput.value), 0);
+      let endDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), parseInt(endHourInput.value), parseInt(endMinuteInput.value), 0);
+
+      if (endDate < startDate) {
+          endDate.setDate(endDate.getDate() + 1);
+      }
+
+      let totalWorkMinutes = (endDate - startDate) / (1000 * 60);
+      let actualWorkMinutes = totalWorkMinutes - restTimeMinutes;
+
+      if (actualWorkMinutes < 0) {
+          actualWorkMinutes = 0;
+      }
+
+      const hourlyRate = 1400;
+      const overtimeMultiplier = 1.25;
+
+      let grossSalaryBeforeTax = 0;
+      const eightHoursInMinutes = 8 * 60;
+
+      if (actualWorkMinutes <= eightHoursInMinutes) {
+          grossSalaryBeforeTax = (actualWorkMinutes / 60) * hourlyRate;
+      } else {
+          const regularWorkMinutes = eightHoursInMinutes;
+          const overtimeMinutes = actualWorkMinutes - eightHoursInMinutes;
+
+          const regularSalary = (regularWorkMinutes / 60) * hourlyRate;
+          const overtimeSalary = (overtimeMinutes / 60) * hourlyRate * overtimeMultiplier;
+
+          grossSalaryBeforeTax = regularSalary + overtimeSalary;
+      }
+
+      const incomeTaxAmount = calculateDailyIncomeTax(Math.floor(grossSalaryBeforeTax));
+      let calculatedSalary = grossSalaryBeforeTax - incomeTaxAmount;
+      calculatedSalary = Math.ceil(calculatedSalary);
+      calculatedSalary += travelCost;
+
+      const attendanceRef = db.ref(`reservations/${reservationId}/entries/${entryId}`);
+      try {
+        await attendanceRef.update({
+          startTime: startTimeStr,
+          endTime: endTimeStr,
+          restTime: restTimeMinutes,
+          travelCost: travelCost,
+          calculatedSalary: calculatedSalary,
+          updatedAt: new Date().toISOString()
+        });
+        alert("勤怠情報が修正されました");
+
+        // 表示モードに戻す
+        card.querySelector(`#display-work-time-${reservationId}-${entryId}`).innerHTML = `<strong>勤務時間:</strong> ${startTimeStr} ~ ${endTimeStr}`;
+        card.querySelector(`#display-rest-time-${reservationId}-${entryId}`).innerHTML = `<strong>休憩時間:</strong> ${restTimeMinutes} 分`;
+        card.querySelector(`#display-travel-cost-${reservationId}-${entryId}`).innerHTML = `<strong>交通費:</strong> ${travelCost} 円`;
+        card.querySelector(`#calculated-salary-${reservationId}-${entryId}`).innerText = calculatedSalary.toLocaleString();
+
+        card.querySelector('.display-mode').style.display = 'block';
+        card.querySelector('.edit-mode').style.display = 'none';
+        button.style.display = 'none'; // 保存ボタンを非表示
+        card.querySelector('.cancel-button').style.display = 'none'; // キャンセルボタンを非表示
+        card.querySelector('.edit-button').style.display = 'inline-block'; // 修正ボタンを再表示
+
+      } catch (error) {
+        console.error("勤怠情報の修正中にエラーが発生しました:", error);
+        alert("勤怠情報の修正に失敗しました。");
+      }
+    }
+
+    async function cancelEdit(button, reservationId, entryId) {
+      const card = button.closest('.card');
+      card.querySelector('.display-mode').style.display = 'block';
+      card.querySelector('.edit-mode').style.display = 'none';
+      button.style.display = 'none'; // キャンセルボタンを非表示
+      card.querySelector('.save-button').style.display = 'none'; // 保存ボタンを非表示
+      card.querySelector('.edit-button').style.display = 'inline-block'; // 修正ボタンを再表示
+    }
+
+    // ページロード時に匿名認証を行い、その後勤務履歴を表示
+    auth.signInAnonymously()
+      .then(() => {
+        console.log("匿名ユーザーがサインインしました (work_history.html)。");
+        loadWorkHistory();
+      })
+      .catch((error) => {
+        console.error("匿名サインインエラー (work_history.html):", error);
+        document.getElementById("workHistoryList").innerHTML = "<p class='no-work-history'>データベースにアクセスできません。エラーが発生しました。</p>";
+      });
+  </script>
+</body>
+</html>
