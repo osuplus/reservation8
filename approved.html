@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>承認一覧</title>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+  <script src="reservations.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f0f0f0;
+      padding: 20px;
+    }
+
+    .menu-icon {
+      font-size: 30px;
+      cursor: pointer;
+      padding: 15px;
+      position: absolute;
+      top: 0;
+      left: 0;
+      z-index: 1000;
+    }
+
+    .sidebar {
+      height: 100%;
+      width: 0;
+      position: fixed;
+      z-index: 999;
+      top: 0;
+      left: 0;
+      background-color: #333;
+      overflow-x: hidden;
+      transition: 0.3s;
+      padding-top: 60px;
+    }
+
+    .sidebar a {
+      padding: 10px 20px;
+      text-decoration: none;
+      font-size: 18px;
+      color: #fff;
+      display: block;
+    }
+
+    .sidebar a:hover {
+      background-color: #575757;
+    }
+
+    h2 {
+      text-align: center;
+      margin-top: 20px;
+      margin-bottom: 20px;
+      padding-top: 40px;
+    }
+
+    .container {
+      max-width: 800px;
+      margin: 20px auto 40px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .card {
+      background-color: #fff;
+      padding: 20px;
+      border-radius: 10px;
+      width: 90%;
+      max-width: 550px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      margin-bottom: 20px;
+    }
+
+    .card p {
+      margin: 8px 0;
+    }
+
+    .salary-display {
+        margin-top: 10px;
+        font-size: 1.1em;
+        font-weight: bold;
+        color: #28a745;
+        text-align: center;
+        border-top: 1px solid #eee;
+        padding-top: 10px;
+    }
+
+    .no-approved-entries {
+        text-align: center;
+        margin-top: 50px;
+        font-size: 1.1em;
+        color: #666;
+    }
+
+    #approvedAttendanceList {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+        width: 100%;
+        align-items: center;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="menu-icon" onclick="openSidebar()">☰</div>
+  <div id="sidebar" class="sidebar">
+    <a href="javascript:void(0)" onclick="closeSidebar()">✕ 閉じる</a>
+    <a href="index.html">予約</a>
+    <a href="list.html">予約一覧</a>
+    <a href="attendance.html">勤怠登録</a>
+    <a href="work_history.html">勤務履歴</a>
+    <a href="confirmation.html">勤怠確認</a>
+  </div>
+
+  <h2>承認一覧</h2>
+  <div class="container">
+    <div id="approvedAttendanceList">
+      <p style="text-align:center;">承認された勤怠情報を読み込み中です...</p>
+    </div>
+  </div>
+
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyCzD2S-S1yv5SyiFCs9OrNPZQzMb7VppWg",
+      authDomain: "reservation-7ecf1.firebaseapp.com",
+      databaseURL: "https://reservation-7ecf1-default-rtdb.firebaseio.com",
+      projectId: "reservation-7ecf1",
+      storageBucket: "reservation-7ecf1.firebasestorage.app",
+      messagingSenderId: "464925582995",
+      appId: "1:464925582995:web:1891936be6fabd876f0f66"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+    const auth = firebase.auth();
+
+    /*const allReservations = [
+      {
+        id: 1,
+        date: "2025年6月15日",
+        store: "サンプルカフェ渋谷店",
+        address: "東京都渋谷区○○1-2-3",
+        maxEntries: 2
+      },
+      {
+        id: 2,
+        date: "2025年6月15日",
+        store: "サンプルカフェ新宿店",
+        address: "東京都新宿区△△4-5-6",
+        maxEntries: 3
+      },
+      {
+        id: 3,
+        date: "2025年6月15日",
+        store: "サンプルカフェ練馬店",
+        address: "東京都練馬区△△4-5-6",
+        maxEntries: 1
+      },
+      {
+        id: 4,
+        date: "2025年6月15日",
+        store: "サンプルカフェ中野店",
+        address: "東京都中野区△△4-5-6",
+        maxEntries: 5
+      },
+      {
+        id: 5,
+        date: "2025年6月15日",
+        store: "サンプルカフェ東京店",
+        address: "東京都千代田区△△4-5-6",
+        maxEntries: 2
+      }
+    ];*/
+
+    function openSidebar() {
+      document.getElementById("sidebar").style.width = "250px";
+    }
+
+    function closeSidebar() {
+      document.getElementById("sidebar").style.width = "0";
+    }
+
+    async function loadApprovedAttendance() {
+      const approvedAttendanceListDiv = document.getElementById("approvedAttendanceList");
+      approvedAttendanceListDiv.innerHTML = "";
+      let hasApprovedEntries = false;
+
+      for (const res of allReservations) {
+        const snapshot = await firebase.database().ref('reservations/' + res.id + '/entries').once('value');
+        const entries = snapshot.val();
+
+        if (entries) {
+          for (const key in entries) {
+            const entry = entries[key];
+            // status が 'approved' の勤怠情報のみを表示
+            if (entry.status === 'approved') {
+              hasApprovedEntries = true;
+
+              const card = document.createElement("div");
+              card.className = "card";
+              card.setAttribute('data-reservation-id', res.id);
+              card.setAttribute('data-entry-id', key);
+
+              card.innerHTML = `
+                <p><strong>日付:</strong> ${res.date}</p>
+                <p><strong>店舗名:</strong> ${res.store}</p>
+                <p><strong>ユーザー名:</strong> ${entry.userName}</p>
+                <p><strong>勤務時間:</strong> ${entry.startTime} ~ ${entry.endTime}</p>
+                <p><strong>休憩時間:</strong> ${entry.restTime} 分</p>
+                <p><strong>交通費:</strong> ${entry.travelCost} 円</p>
+                <p><strong>給料:</strong> ${entry.calculatedSalary.toLocaleString()} 円</p>
+                <p style="font-size: 0.9em; color: #666; text-align: right;">承認日時: ${new Date(entry.approvedAt).toLocaleString()}</p>
+              `;
+              approvedAttendanceListDiv.appendChild(card);
+            }
+          }
+        }
+      }
+
+      if (!hasApprovedEntries) {
+        approvedAttendanceListDiv.innerHTML = "<p class='no-approved-entries'>承認された勤怠情報はありません。</p>";
+      }
+    }
+
+    auth.signInAnonymously()
+      .then(() => {
+        console.log("匿名ユーザーがサインインしました (approved_list.html)。");
+        loadApprovedAttendance();
+      })
+      .catch((error) => {
+        console.error("匿名サインインエラー (approved_list.html):", error);
+        document.getElementById("approvedAttendanceList").innerHTML = "<p class='no-approved-entries'>データベースにアクセスできません。エラーが発生しました。</p>";
+      });
+  </script>
+</body>
+</html>
